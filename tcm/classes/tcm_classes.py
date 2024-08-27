@@ -10,6 +10,8 @@ def _calculate_tcm_over_azimuths(nits, az_vector, Cxy2, Cxy2_trial, S_ni,
                                  weighted_coherence_v, sum_coherence_v,
                                  fmin_ind, fmax_ind):
     # Loop over time
+    ZI_coherence = np.empty((len(az_vector), nits))
+
     for jj in range(0, nits):
         """ Loop over all azimuths and calculate transverse
         coherence for the trial azimuth. """
@@ -19,13 +21,15 @@ def _calculate_tcm_over_azimuths(nits, az_vector, Cxy2, Cxy2_trial, S_ni,
             """ Weighting trial transverse coherence values using
                 the vertical coherence. """
             weighted_coherence_v[kk, jj] = np.sum(Cxy2_trial[fmin_ind[jj]:fmax_ind[jj], jj] * Cxy2[fmin_ind[jj]:fmax_ind[jj], jj]) # noqa
+            ZI_coherence[kk, jj] = np.median(Cxy2[fmin_ind[jj]:fmax_ind[jj], jj])  # Here is where median vertical coherence is calculated for each time window
+
             # Sum of vertical coherence for denominator of weighted sum
             sum_coherence_v[kk, jj] = np.sum(
                 Cxy2[fmin_ind[jj]:fmax_ind[jj], jj])
 
     weighted_coherence = weighted_coherence_v/sum_coherence_v # noqa
 
-    return weighted_coherence
+    return weighted_coherence, ZI_coherence
 
 
 class SpectralEstimation:
@@ -185,19 +189,24 @@ class TCM:
         self.Cxy2_trial = np.empty((len(spectrum.freq_vector), data.nits))
         self.weighted_coherence_v = np.empty((len(self.az_vector), data.nits))
         self.sum_coherence_v = np.empty((len(self.az_vector), data.nits))
+
+        self.ZI_coherence = np.empty((len(spectrum.freq_vector), data.nits))  # NEW
+
         self.weighted_coherence = np.empty(
             (len(spectrum.freq_vector), data.nits))
 
     def calculate_tcm_over_azimuths(self, data, spectrum):
         """ Calculate the  transverse coherence over all trial azimuths. """
-        self.weighted_coherence = _calculate_tcm_over_azimuths(data.nits, self.az_vector, spectrum.Cxy2, self.Cxy2_trial, spectrum.S_ni, spectrum.S_ei, spectrum.S_nn, spectrum.S_ne, spectrum.S_ee, spectrum.S_ii, self.weighted_coherence_v, self.sum_coherence_v, self.fmin_ind, self.fmax_ind) # noqa
-
+        self.weighted_coherence, self.ZI_coherence = _calculate_tcm_over_azimuths(data.nits, self.az_vector, spectrum.Cxy2, self.Cxy2_trial, spectrum.S_ni, spectrum.S_ei, spectrum.S_nn, spectrum.S_ne, spectrum.S_ee, spectrum.S_ii, self.weighted_coherence_v, self.sum_coherence_v, self.fmin_ind, self.fmax_ind) # noqa
+        # CHANGES ABOVE
     def find_minimum_tc(self, data, spectrum):
         """ Find the azimuths corresponding to the minimum transverse coherence. """
         # Apply some smoothing if desired
         self.bbv = np.full(data.nits - self.nsmth, 0, dtype='int')
         self.bbv2 = np.full(data.nits - self.nsmth, 0, dtype='int')
-        self.mean_coherence = np.full(data.nits - self.nsmth, np.nan)
+
+        self.median_coherence = np.full(data.nits - self.nsmth, np.nan)  # NEW HERE
+
         self.mean_phase_angle = np.full(data.nits - self.nsmth, 0, dtype='int')
 
         # Here are the 2 possible back-azimuths
@@ -208,8 +217,9 @@ class TCM:
             self.bbv[jj] = idx[0]
             self.bbv2[jj] = idx[1]
             # Info on the amount of coherence
-            self.mean_coherence[jj] = np.max(np.mean(
-                self.weighted_coherence[:, jj:(jj + self.nsmth + 1)], 1))
+            self.median_coherence[jj] = np.max(np.median(
+                self.ZI_coherence[:, jj:(jj + self.nsmth + 1 )], axis=1))  # NEW
+
             self.mean_phase_angle[jj] = np.argmax(np.mean(
                 self.weighted_coherence[:, jj:(jj + self.nsmth + 1)], 1))
 
