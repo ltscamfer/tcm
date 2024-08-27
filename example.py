@@ -61,12 +61,12 @@ st.interpolate(sampling_rate=st[0].stats.sampling_rate, method='lanczos', a=15)
 st.detrend(type='linear')
 
 #%% Run the transverse coherence minimization (TCM) algorithm
-baz, sigma, time_smooth, frequency_vector, time, Cxy2, mean_coherence, freq_lim_min, freq_lim_max = tcm.run_tcm(st, freq_min, freq_max, window_length, window_overlap, az_min, az_max, az_delta, search_2Hz) # noqa
+baz, sigma, time_smooth, frequency_vector, time, Cxy2, median_coherence, freq_lim_min, freq_lim_max = tcm.run_tcm(st, freq_min, freq_max, window_length, window_overlap, az_min, az_max, az_delta, search_2Hz) # noqa
 
 #%% Plot the results
 fig, axs = plotting.tcm_plot(st, freq_min, freq_max, baz,
                              time_smooth, frequency_vector, time,
-                             Cxy2, mean_coherence, freq_lim_min, freq_lim_max,
+                             Cxy2, median_coherence, freq_lim_min, freq_lim_max,
                              search_2Hz)
 # Plot uncertainties
 axs[4].scatter(time_smooth, baz + sigma, c='gray', marker='_', linestyle=':')
