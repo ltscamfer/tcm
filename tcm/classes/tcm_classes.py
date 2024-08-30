@@ -11,7 +11,7 @@ def _calculate_tcm_over_azimuths(nits, az_vector, Cxy2, Cxy2_trial, S_ni,
                                  fmin_ind, fmax_ind):
     # Loop over time
     ZI_coherence = np.empty((len(az_vector), nits))
-
+    TI_coherence = np.empty((len(az_vector), nits))
     for jj in range(0, nits):
         """ Loop over all azimuths and calculate transverse
         coherence for the trial azimuth. """
@@ -22,6 +22,8 @@ def _calculate_tcm_over_azimuths(nits, az_vector, Cxy2, Cxy2_trial, S_ni,
                 the vertical coherence. """
             weighted_coherence_v[kk, jj] = np.sum(Cxy2_trial[fmin_ind[jj]:fmax_ind[jj], jj] * Cxy2[fmin_ind[jj]:fmax_ind[jj], jj]) # noqa
             ZI_coherence[kk, jj] = np.median(Cxy2[fmin_ind[jj]:fmax_ind[jj], jj])  # Here is where median vertical coherence is calculated for each time window
+            TI_coherence[kk, jj] = np.median(Cxy2_trial[fmin_ind[jj]:fmax_ind[jj],
+                                             jj])  # Here is where median transverse coherence is calculated for each time window
 
             # Sum of vertical coherence for denominator of weighted sum
             sum_coherence_v[kk, jj] = np.sum(
@@ -29,7 +31,7 @@ def _calculate_tcm_over_azimuths(nits, az_vector, Cxy2, Cxy2_trial, S_ni,
 
     weighted_coherence = weighted_coherence_v/sum_coherence_v # noqa
 
-    return weighted_coherence, ZI_coherence
+    return weighted_coherence, ZI_coherence, TI_coherence
 
 
 class SpectralEstimation:
@@ -191,22 +193,20 @@ class TCM:
         self.sum_coherence_v = np.empty((len(self.az_vector), data.nits))
 
         self.ZI_coherence = np.empty((len(spectrum.freq_vector), data.nits))  # NEW
-
+        self.TI_coherence = np.empty((len(spectrum.freq_vector), data.nits))
         self.weighted_coherence = np.empty(
             (len(spectrum.freq_vector), data.nits))
 
     def calculate_tcm_over_azimuths(self, data, spectrum):
         """ Calculate the  transverse coherence over all trial azimuths. """
-        self.weighted_coherence, self.ZI_coherence = _calculate_tcm_over_azimuths(data.nits, self.az_vector, spectrum.Cxy2, self.Cxy2_trial, spectrum.S_ni, spectrum.S_ei, spectrum.S_nn, spectrum.S_ne, spectrum.S_ee, spectrum.S_ii, self.weighted_coherence_v, self.sum_coherence_v, self.fmin_ind, self.fmax_ind) # noqa
+        self.weighted_coherence, self.ZI_coherence, self.TI_coherence = _calculate_tcm_over_azimuths(data.nits, self.az_vector, spectrum.Cxy2, self.Cxy2_trial, spectrum.S_ni, spectrum.S_ei, spectrum.S_nn, spectrum.S_ne, spectrum.S_ee, spectrum.S_ii, self.weighted_coherence_v, self.sum_coherence_v, self.fmin_ind, self.fmax_ind) # noqa
         # CHANGES ABOVE
-    def find_minimum_tc(self, data, spectrum):
+    def find_minimum_tc(self, data, spectrum, use_weighted):
         """ Find the azimuths corresponding to the minimum transverse coherence. """
         # Apply some smoothing if desired
         self.bbv = np.full(data.nits - self.nsmth, 0, dtype='int')
         self.bbv2 = np.full(data.nits - self.nsmth, 0, dtype='int')
-
-        self.median_coherence = np.full(data.nits - self.nsmth, np.nan)  # NEW HERE
-
+        self.mean_coherence = np.full(data.nits - self.nsmth, np.nan)
         self.mean_phase_angle = np.full(data.nits - self.nsmth, 0, dtype='int')
 
         # Here are the 2 possible back-azimuths
@@ -217,8 +217,8 @@ class TCM:
             self.bbv[jj] = idx[0]
             self.bbv2[jj] = idx[1]
             # Info on the amount of coherence
-            self.median_coherence[jj] = np.max(np.median(
-                self.ZI_coherence[:, jj:(jj + self.nsmth + 1 )], axis=1))  # NEW
+            self.mean_coherence[jj] = np.max(np.mean(
+                self.weighted_coherence[:, jj:(jj + self.nsmth + 1)], 1))
 
             self.mean_phase_angle[jj] = np.argmax(np.mean(
                 self.weighted_coherence[:, jj:(jj + self.nsmth + 1)], 1))
@@ -247,16 +247,73 @@ class TCM:
         tst1 = np.sum(self.Cxy2rza[self.fmin_ind[jj]:self.fmax_ind[jj], self.smvc] * spectrum.Cxy2[self.fmin_ind[jj]:self.fmax_ind[jj], self.smvc], axis=0)/np.sum(spectrum.Cxy2[self.fmin_ind[jj]:self.fmax_ind[jj], self.smvc], axis=0) # noqa
         tst2 = np.sum(self.Cxy2rza2[self.fmin_ind[jj]:self.fmax_ind[jj], self.smvc] * spectrum.Cxy2[self.fmin_ind[jj]:self.fmax_ind[jj], self.smvc], axis=0)/np.sum(spectrum.Cxy2[self.fmin_ind[jj]:self.fmax_ind[jj], self.smvc], axis=0) # noqa
         # Pick the angle the farthest from -pi/2
-        self.baz_final = np.full(data.nits - self.nsmth, np.nan)
+        self.baz_weighted = np.full(data.nits - self.nsmth, np.nan)
         for jj in range(0, len(self.bbv)):
             tst_ind = np.argmax(np.abs(np.array([tst1[jj], tst2[jj]]) - (-np.pi/2))) # noqa
             if tst_ind == 1:
-                self.baz_final[jj] = self.az_vector[self.bbv[jj]]
+                self.baz_weighted[jj] = self.az_vector[self.bbv[jj]]
             else:
-                self.baz_final[jj] = self.az_vector[self.bbv2[jj]]
+                self.baz_weighted[jj] = self.az_vector[self.bbv2[jj]]
 
         # Convert azimuth to back-azimuth
-        self.baz_final = (self.baz_final + 360) % 360
+        self.baz_weighted = (self.baz_weighted + 360) % 360
+        #---------------------------------------------------------------------------------------------------------------
+        self.bbv = np.full(data.nits - self.nsmth, 0, dtype='int')
+        self.bbv2 = np.full(data.nits - self.nsmth, 0, dtype='int')
+        self.median_coherence = np.full(data.nits - self.nsmth, np.nan)
+        self.mean_phase_angle = np.full(data.nits - self.nsmth, 0, dtype='int')
+
+        # Here are the 2 possible back-azimuths
+        for jj in range(0, data.nits - self.nsmth):
+            idx = np.argsort(np.sum(
+                self.TI_coherence[:, jj:(jj + self.nsmth + 1)], 1))
+            idx = np.sort(idx[0:2])
+            self.bbv[jj] = idx[0]
+            self.bbv2[jj] = idx[1]
+            # Info on the amount of coherence
+            self.median_coherence[jj] = np.max(np.median(
+                self.ZI_coherence[:, jj:(jj + self.nsmth + 1)], axis=1))  # NEW
+
+            self.mean_phase_angle[jj] = np.argmax(np.mean(
+                self.TI_coherence[:, jj:(jj + self.nsmth + 1)], 1))
+
+        # Resolve the 180 degree ambiguity by assuming retrograde motion
+        self.Cxy2rz = np.empty((len(spectrum.freq_vector), data.nits), dtype=complex)  # noqa
+        self.Cxy2rz2 = np.empty((len(spectrum.freq_vector), data.nits), dtype=complex)  # noqa
+        self.Cxy2rza = np.empty((len(spectrum.freq_vector), data.nits))  # noqa
+        self.Cxy2rza2 = np.empty((len(spectrum.freq_vector), data.nits))  # noqa
+        for jj in range(0, data.nits - self.nsmth):
+            t0_ind = data.intervals[jj]
+            tf_ind = data.intervals[jj] + data.winlensamp
+            _, self.Cxy2rz[:, jj] = csd(
+                data.Z[t0_ind:tf_ind], data.N[t0_ind:tf_ind] * np.cos(
+                    self.az_vector[self.bbv[jj]] * np.pi / 180) + data.E[t0_ind:tf_ind] * np.sin(
+                    self.az_vector[self.bbv[jj]] * np.pi / 180), fs=data.sampling_rate, window=spectrum.window,
+                nperseg=spectrum.sub_window, noverlap=spectrum.noverlap)  # noqa
+            _, self.Cxy2rz2[:, jj] = csd(
+                data.Z[t0_ind:tf_ind], data.N[t0_ind:tf_ind] * np.cos(
+                    self.az_vector[self.bbv2[jj]] * np.pi / 180) + data.E[t0_ind:tf_ind] * np.sin(
+                    self.az_vector[self.bbv2[jj]] * np.pi / 180), fs=data.sampling_rate, window=spectrum.window,
+                nperseg=spectrum.sub_window, noverlap=spectrum.noverlap)
+            self.Cxy2rza[:, jj] = np.angle(self.Cxy2rz[:, jj])
+            self.Cxy2rza2[:, jj] = np.angle(self.Cxy2rz2[:, jj])
+        # The time vector for the case of nonzero smoothing
+        self.smvc = np.arange(((self.nsmth / 2) + 1), (data.nits - (self.nsmth / 2)) + 1, dtype='int')  # noqa
+        # The angle closest to -pi/2 is the azimuth, so the other
+        # one is the back-azimuth
+        tst1 = np.sum(self.Cxy2rza[self.fmin_ind[jj]:self.fmax_ind[jj], self.smvc] * spectrum.Cxy2[self.fmin_ind[jj]:self.fmax_ind[jj], self.smvc], axis=0) / np.sum(spectrum.Cxy2[self.fmin_ind[jj]:self.fmax_ind[jj], self.smvc], axis=0)  # noqa
+        tst2 = np.sum(self.Cxy2rza2[self.fmin_ind[jj]:self.fmax_ind[jj], self.smvc] * spectrum.Cxy2[self.fmin_ind[jj]:self.fmax_ind[jj], self.smvc], axis=0) / np.sum(spectrum.Cxy2[self.fmin_ind[jj]:self.fmax_ind[jj], self.smvc], axis=0)  # noqa
+        # Pick the angle the farthest from -pi/2
+        self.baz_unweighted = np.full(data.nits - self.nsmth, np.nan)
+        for jj in range(0, len(self.bbv)):
+            tst_ind = np.argmax(np.abs(np.array([tst1[jj], tst2[jj]]) - (-np.pi / 2)))  # noqa
+            if tst_ind == 1:
+                self.baz_unweighted[jj] = self.az_vector[self.bbv[jj]]
+            else:
+                self.baz_unweighted[jj] = self.az_vector[self.bbv2[jj]]
+
+        # Convert azimuth to back-azimuth
+        self.baz_unweighted = (self.baz_unweighted + 360) % 360
 
     # def calculate_phase_angle(self, data, spectrum):
     #     """ Calculate phase angle between infrasound and vertical seismic. """
@@ -266,7 +323,7 @@ class TCM:
     # np.conj(spectrum.S_zi[:, jj]))) * 180/np.pi
 
     def calculate_uncertainty(self, data, spectrum):
-        """ Calculate uncertainty. """
+        """ Calculate weighted uncertainty. """
         # See https://docs.obspy.org/_modules/obspy/signal/rotate.html
         Cxy2R = np.empty((len(spectrum.freq_vector), data.nits)) # noqa
         Cxy2T = np.empty((len(spectrum.freq_vector), data.nits)) # noqa
@@ -274,9 +331,9 @@ class TCM:
             t0_ind = data.intervals[jj]
             tf_ind = data.intervals[jj] + data.winlensamp
             R = -data.E[t0_ind:tf_ind] * np.sin(
-                    self.baz_final[jj] * np.pi/180) - data.N[t0_ind:tf_ind] * np.cos(self.baz_final[jj] * np.pi/180) # noqa
+                    self.baz_weighted[jj] * np.pi/180) - data.N[t0_ind:tf_ind] * np.cos(self.baz_weighted[jj] * np.pi/180) # noqa
             T = -data.E[t0_ind:tf_ind] * np.cos(
-                    self.baz_final[jj] * np.pi/180) + data.N[t0_ind:tf_ind] * np.sin(self.baz_final[jj] * np.pi/180) # noqa
+                    self.baz_weighted[jj] * np.pi/180) + data.N[t0_ind:tf_ind] * np.sin(self.baz_weighted[jj] * np.pi/180) # noqa
             _, Cxy2R[:, jj] = csd(R, R, fs=data.sampling_rate, scaling='spectrum', window=spectrum.window, nperseg=spectrum.sub_window, noverlap=spectrum.noverlap) # noqa
             _, Cxy2T[:, jj] = csd(T, T, fs=data.sampling_rate, scaling='spectrum', window=spectrum.window, nperseg=spectrum.sub_window, noverlap=spectrum.noverlap) # noqa
 
@@ -286,7 +343,41 @@ class TCM:
         n2 = np.sum(Cxy2T[self.fmin_ind[jj]:self.fmax_ind[jj], self.smvc] * spectrum.Cxy2[self.fmin_ind[jj]:self.fmax_ind[jj], self.smvc], axis=0)/np.sum(spectrum.Cxy2[self.fmin_ind[jj]:self.fmax_ind[jj], self.smvc], axis=0) # noqa
 
         # Calculate sigma
-        self.sigma = np.full_like(self.smvc, np.nan, dtype='float')
+        self.sigma_weighted = np.full_like(self.smvc, np.nan, dtype='float')
         idx_valid = np.where(A2 > 0.0)[0]
-        self.sigma[idx_valid] = np.sqrt(
+        self.sigma_weighted[idx_valid] = np.sqrt(
             (3 * n2[idx_valid]) / (16 * A2[idx_valid]))
+
+        """ Calculate unweighted uncertainty. """
+        # See https://docs.obspy.org/_modules/obspy/signal/rotate.html
+        Cxy2R = np.empty((len(spectrum.freq_vector), data.nits))  # noqa
+        Cxy2T = np.empty((len(spectrum.freq_vector), data.nits))  # noqa
+        for jj in range(0, data.nits - self.nsmth):
+            t0_ind = data.intervals[jj]
+            tf_ind = data.intervals[jj] + data.winlensamp
+            R = -data.E[t0_ind:tf_ind] * np.sin(
+                self.baz_unweighted[jj] * np.pi / 180) - data.N[t0_ind:tf_ind] * np.cos(
+                self.baz_unweighted[jj] * np.pi / 180)  # noqa
+            T = -data.E[t0_ind:tf_ind] * np.cos(
+                self.baz_unweighted[jj] * np.pi / 180) + data.N[t0_ind:tf_ind] * np.sin(
+                self.baz_unweighted[jj] * np.pi / 180)  # noqa
+            _, Cxy2R[:, jj] = csd(R, R, fs=data.sampling_rate, scaling='spectrum', window=spectrum.window,
+                                  nperseg=spectrum.sub_window, noverlap=spectrum.noverlap)  # noqa
+            _, Cxy2T[:, jj] = csd(T, T, fs=data.sampling_rate, scaling='spectrum', window=spectrum.window,
+                                  nperseg=spectrum.sub_window, noverlap=spectrum.noverlap)  # noqa
+
+        # The time vector for the case of nonzero smoothing
+        self.smvc = np.arange(((self.nsmth / 2) + 1), (data.nits - (self.nsmth / 2)) + 1, dtype='int')  # noqa
+        A2 = np.sum(
+            Cxy2R[self.fmin_ind[jj]:self.fmax_ind[jj], self.smvc] * spectrum.Cxy2[self.fmin_ind[jj]:self.fmax_ind[jj],
+                                                                    self.smvc], axis=0) / np.sum(
+            spectrum.Cxy2[self.fmin_ind[jj]:self.fmax_ind[jj], self.smvc], axis=0)  # noqa
+        n2 = np.sum(
+            Cxy2T[self.fmin_ind[jj]:self.fmax_ind[jj], self.smvc] * spectrum.Cxy2[self.fmin_ind[jj]:self.fmax_ind[jj],
+                                                                    self.smvc], axis=0) / np.sum(
+            spectrum.Cxy2[self.fmin_ind[jj]:self.fmax_ind[jj], self.smvc], axis=0)  # noqa
+
+        # Calculate sigma
+        self.sigma_unweighted = np.full_like(self.smvc, np.nan, dtype='float')
+        idx_valid = np.where(A2 > 0.0)[0]
+        self.sigma_unweighted[idx_valid] = np.sqrt((3 * n2[idx_valid]) / (16 * A2[idx_valid]))

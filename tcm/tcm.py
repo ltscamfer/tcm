@@ -5,7 +5,7 @@ from obspy.core.stream import Stream
 from tcm.classes import tcm_classes, tcm_data_class
 
 
-def run_tcm(st: type[Stream], freq_min: float, freq_max: float, window_length: float, window_overlap: float, az_min: float = 0.0, az_max: float = 359.0, az_delta: float = 1.0, search_2Hz: bool = False) -> tuple: # noqa
+def run_tcm(st: type[Stream], freq_min: float, freq_max: float, window_length: float, window_overlap: float, az_min: float = 0.0, az_max: float = 359.0, az_delta: float = 1.0, search_2Hz: bool = False, use_weighted: bool = True) -> tuple: # noqa
     """ Process Obspy stream seismoacoustic data with the transverse coherence minimization algorithm (TCM).
 
     Args:
@@ -48,8 +48,8 @@ def run_tcm(st: type[Stream], freq_min: float, freq_max: float, window_length: f
     # Calculate the transverse coherence over all trial azimuths
     TCM.calculate_tcm_over_azimuths(data, CSM)
     # Find the coherence minima and apply the retrograde assumption
-    TCM.find_minimum_tc(data, CSM)
+    TCM.find_minimum_tc(data, CSM, use_weighted)
     # Estimate uncertainty
     TCM.calculate_uncertainty(data, CSM)
 
-    return TCM.baz_final, TCM.sigma, CSM.t[TCM.smvc], CSM.freq_vector, CSM.t, CSM.Cxy2, TCM.median_coherence, TCM.freq_min_array, TCM.freq_max_array  # noqa
+    return TCM.baz_weighted, TCM.baz_unweighted, TCM.sigma_weighted, TCM.sigma_unweighted, CSM.t[TCM.smvc], CSM.freq_vector, CSM.t, CSM.Cxy2, TCM.mean_coherence, TCM.median_coherence, TCM.freq_min_array, TCM.freq_max_array  # noqa

@@ -28,6 +28,11 @@ class DataBin:
         self.nits = len(self.intervals)
         # Pull time vector from stream object
         self.tvec = st[0].times('matplotlib')
+
+        self.sub_window = int(np.round(self.winlensamp / 4))
+        self.noverlap = int(self.sub_window * 0.5)
+        self.window = 'hann'
+        self.t = np.full(self.nits, np.nan)
         # Assign the traces to individual arrays
         if len(st) == 4:
             self.Infra = st[1].data
