@@ -68,18 +68,19 @@ st.detrend(type='linear')
 station_lat = inv[0][0].latitude
 station_lon = inv[0][0].longitude
 
-_, backaz, _ = gps2dist_azimuth(station_lat, station_lon, source_lat, source_lon)
+distance_m, backaz, _ = gps2dist_azimuth(station_lat, station_lon, source_lat, source_lon)
+distance_km = np.round(distance_m / 1000,decimals=1)
 
 baz_weighted, baz_unweighted, sigma_weighted, sigma_unweighted, time_smooth, frequency_vector, time, Cxy2, mean_coherence, median_coherence, freq_lim_min, freq_lim_max = tcm.run_tcm(st, freq_min, freq_max, window_length, window_overlap, az_min, az_max, az_delta, search_2Hz) # noqa
 data = tcm_data_class.DataBin(freq_min, freq_max, window_length, window_overlap, az_min, az_max, az_delta, search_2Hz)
 data.build_data_arrays(st)
 #%% Plot the results
-
+#-------------------------------------------------------------------------------------------------
 # Here are the options for plot_method:
 # 'weighted' : only plots the backazimuth estimates using the weighted coherence
 # 'unweighted' : only plots the backazimuth estimates using only the minimized transverse-infrasound coherence
 # 'both' : plots both the weighted and unweighted backazimuth estimates
-
+#-------------------------------------------------------------------------------------------------
 fig, axs = plotting.tcm_plot(st, data, freq_min, freq_max, baz_weighted, baz_unweighted,
                              time_smooth, frequency_vector, time,
                              Cxy2, mean_coherence, median_coherence, freq_lim_min, freq_lim_max,
@@ -99,9 +100,9 @@ else:
 #-----------------------------------------------------------CUSTOMIZE Y LIMIT AND TICKS HERE
 ticks = np.arange(0, 370, 10)
 axs[4].set_yticks(ticks)
-axs[4].set_ylim(250,265)
+axs[4].set_ylim(250, 265)
 #-----------------------------------------------------------CUSTOMIZE Y LIMIT AND TICKS HERE
 axs[4].legend(loc='lower left')
-plt.suptitle(f'STATION: {STATION}\nSTART TIME: {str(STARTTIME)[:-8]}\nWINDOW LENGTH: {str(window_length)[:-2]} s, OVERLAP: {str(window_overlap*100)[:-2]}%', fontsize=20)
+plt.suptitle(f'STATION: {STATION}, {str(distance_km)[:-2]} km from source\nSTART TIME: {str(STARTTIME)[:-8]}\nWINDOW LENGTH: {str(window_length)[:-2]} s, OVERLAP: {str(window_overlap*100)[:-2]}%', fontsize=20)
 #plt.savefig(f"/Users/ltscamfer/ltscamfer_uaf/figures/TCM_comparison/{STATION}_method_comparison.png", dpi=300)
 plt.show()

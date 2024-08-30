@@ -137,7 +137,7 @@ def tcm_plot(st, data, freq_min, freq_max, baz_weighted, baz_unweighted, time_sm
 
     if plot_method == 'unweighted':
         sc1 = axs[4].scatter(time_smooth, baz_unweighted, c=median_coherence, cmap=cm,
-                             edgecolors=None, lw=0.3)
+                             marker='D', edgecolors=None, lw=0.3)
         axs[4].set_ylim(0, 360)
         axs[4].set_yticks([0, 90, 180, 270, 360])
         axs[4].set_ylabel('Back-Azimuth \n [Deg.]')
